@@ -92,45 +92,59 @@ export const Register = async(req, res) => {
     }
 }
 
-export const Login = async(req, res) => {
-    if(req.body.email ==="admin@gmail.com" && req.body.password === "admin"){
-        res.json({fonction:"Admin"});
-    }else{
+export const Login = async (req, res) => {
     try {
-        const user = await Users.findAll({
-            where:{
+        // Utiliser findOne pour récupérer un seul utilisateur
+        const user = await Users.findOne({
+            where: {
                 email: req.body.email
             }
         });
-        const match = await bcrypt.compare(req.body.password, user[0].password);
-        if(!match) return res.status(400).json({msg: "Wrong Password"});
-        const userId = user[0].id;
-        const name = user[0].name;
-        const fonction = user[0].fonction;
-        const email = user[0].email;
-        console.log(fonction);
-        
-        const accessToken = jwt.sign({userId, name,fonction, email}, process.env.ACCESS_TOKEN_SECRET,{
+
+        // 1. Vérifier si l'utilisateur existe
+        if (!user) {
+            return res.status(404).json({ msg: "Email n'existe pas" });
+        }
+
+        // 2. Comparer le mot de passe haché
+        const match = await bcrypt.compare(req.body.password, user.password);
+        if (!match) {
+            return res.status(400).json({ msg: "Mot de passe incorrect" });
+        }
+
+        // 3. Créer les tokens
+        const userId = user.id;
+        const name = user.name;
+        const fonction = user.fonction;
+        const email = user.email;
+
+        const accessToken = jwt.sign({ userId, name, fonction, email }, process.env.ACCESS_TOKEN_SECRET, {
             expiresIn: '20s'
         });
-        const refreshToken = jwt.sign({userId, name,fonction, email}, process.env.REFRESH_TOKEN_SECRET,{
+        const refreshToken = jwt.sign({ userId, name, fonction, email }, process.env.REFRESH_TOKEN_SECRET, {
             expiresIn: '1d'
         });
-        await Users.update({refresh_token: refreshToken},{
-            where:{
+
+        // 4. Mettre à jour le refresh token
+        await Users.update({ refresh_token: refreshToken }, {
+            where: {
                 id: userId
             }
         });
-        res.cookie('refreshToken', refreshToken,{
+
+        // 5. Définir le cookie et envoyer la réponse
+        res.cookie('refreshToken', refreshToken, {
             httpOnly: true,
             maxAge: 24 * 60 * 60 * 1000
         });
-        res.json({ accessToken,fonction });
+
+        res.json({ accessToken, fonction });
+
     } catch (error) {
-        console.log(error);
-        res.status(404).json({msg:"Email n'existe pas"});
+        // En cas d'erreur inattendue (ex: problème de connexion à la DB)
+        console.error(error);
+        res.status(500).json({ msg: "Erreur serveur" });
     }
-}
 }
 
 export const Logout = async(req, res) => {
